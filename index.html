@@ -27,7 +27,7 @@
             height: 150px;
             margin-bottom: 10px;
         }
-        input[type="file"] {
+        input[type="text"], input[type="file"] {
             width: 100%;
             margin-bottom: 10px;
             padding: 10px;
@@ -82,10 +82,10 @@
     <div class="container">
         <h1>Photo and Text Feed</h1>
         <div class="instructions">
-            <p>Введите текст и выберите изображение. Сервер загрузит данные и вернёт ссылки.</p>
+            <p>Введите текст и вставьте ссылку на изображение с <a href="https://postimg.cc" target="_blank">Postimg.cc</a>.</p>
         </div>
         <div id="editor"></div>
-        <input type="file" id="photoInput" accept="image/*">
+        <input type="text" id="imageUrlInput" placeholder="Paste Postimg.cc image URL (e.g., https://i.postimg.cc/...)">
         <button onclick="addPost()">Add Post</button>
         <div id="error" class="error"></div>
         <div id="feed"></div>
@@ -93,75 +93,72 @@
 
     <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
     <script>
-        // Инициализация Quill.js
         const quill = new Quill('#editor', {
             theme: 'snow',
-            modules: {
-                toolbar: [['bold', 'italic'], ['list', 'bullet']]
-            }
+            modules: { toolbar: [['bold', 'italic'], ['list', 'bullet']] }
         });
 
-        // Загрузка сохранённых постов
         window.onload = function() {
             loadPosts();
         };
 
         async function addPost() {
             const text = quill.getText().trim();
-            const photoInput = document.getElementById('photoInput').files[0];
-            const feed = document.getElementById('feed');
+            const imageUrl = document.getElementById('imageUrlInput').value;
             const errorDiv = document.getElementById('error');
 
-            if (!text && !photoInput) {
-                errorDiv.textContent = 'Please enter text or select an image.';
+            if (!text && !imageUrl) {
+                errorDiv.textContent = 'Please enter text or an image URL.';
                 return;
             }
 
             const formData = new FormData();
             if (text) formData.append('text', text);
-            if (photoInput) formData.append('image', photoInput);
 
             try {
                 errorDiv.textContent = '';
-                console.log('Sending request to server...');
-                const response = await fetch('https://server-tzzc.onrender.com/upload', {
-                    method: 'POST',
-                    body: formData
-                });
+                console.log('Sending text to server...');
+                let textUrl = '';
+                if (text) {
+                    const response = await fetch('https://server-tzzc.onrender.com/upload-text', {
+                        method: 'POST',
+                        body: formData
+                    });
 
-                const responseText = await response.text();
-                console.log('Server response:', responseText);
+                    const responseText = await response.text();
+                    console.log('Server response:', responseText);
 
-                let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (parseError) {
-                    errorDiv.textContent = 'Invalid server response: not JSON';
-                    console.error('JSON parse error:', parseError, responseText);
-                    return;
+                    let result;
+                    try {
+                        result = JSON.parse(responseText);
+                    } catch (parseError) {
+                        errorDiv.textContent = 'Invalid server response: not JSON';
+                        console.error('JSON parse error:', parseError, responseText);
+                        return;
+                    }
+
+                    if (result.success) {
+                        textUrl = result.textUrl;
+                    } else {
+                        errorDiv.textContent = 'Server error: ' + result.error;
+                        return;
+                    }
                 }
 
-                if (result.success) {
-                    console.log('Received URLs:', result);
-                    const post = {
-                        text: text,
-                        textUrl: result.textUrl || '',
-                        imageUrl: result.imageUrl || '',
-                        timestamp: new Date().toISOString()
-                    };
-                    let posts = JSON.parse(localStorage.getItem('posts') || '[]');
-                    posts.unshift(post);
-                    localStorage.setItem('posts', JSON.stringify(posts));
+                console.log('Received URLs:', { textUrl, imageUrl });
+                const post = {
+                    text: text,
+                    textUrl: textUrl,
+                    imageUrl: imageUrl,
+                    timestamp: new Date().toISOString()
+                };
+                let posts = JSON.parse(localStorage.getItem('posts') || '[]');
+                posts.unshift(post);
+                localStorage.setItem('posts', JSON.stringify(posts));
 
-                    // Очистка формы
-                    quill.setText('');
-                    document.getElementById('photoInput').value = '';
-
-                    // Обновление ленты
-                    loadPosts();
-                } else {
-                    errorDiv.textContent = 'Server error: ' + result.error;
-                }
+                quill.setText('');
+                document.getElementById('imageUrlInput').value = '';
+                loadPosts();
             } catch (error) {
                 errorDiv.textContent = 'Request failed: ' + error.message;
                 console.error('Fetch error:', error);
