@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build:wasm && vite",
-    "build": "npm run build:wasm && tsc -b && vite build",
+    "build": "tsc -b && vite build"
     "build:wasm": "cd wasm && ./build.sh",
     "build:wasm-safe": "cd wasm && if [ -f build.sh ]; then ./build.sh; else echo 'WASM build skipped - build.sh not found'; fi",
     "server": "cd server && cargo run",
