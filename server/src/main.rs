@@ -100,12 +100,6 @@ async fn main() {
             }))
         });
 
-    let routes = ws_route
-        .or(health)
-        .or(stats)
-        .with(cors)
-        .recover(handle_rejection);
-
     // Раздача статических файлов (фронтенд)
     let static_files = warp::path("static")
         .and(warp::fs::dir("../dist"));
