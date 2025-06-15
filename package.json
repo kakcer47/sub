@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --skip-ts"
+    "build": "vite build",
     "build:wasm": "cd wasm && ./build.sh",
     "server": "cd server && cargo run",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
