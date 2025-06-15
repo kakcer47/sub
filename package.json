@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . ~/.cargo/env && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && cd wasm && wasm-pack build --target web --out-dir ../src/lib/wasm-engine --no-typescript && cd ../server && cargo build --release && cd .. && npm install && npx vite build",
-    "server": "./server/target/release/server",
+    "server": "./server/target/release/p2p-server",
     "build:wasm": "cd wasm && ./build.sh",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "lint": "eslint .",
