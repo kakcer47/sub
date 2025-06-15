@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx vite build",
-    "build:wasm": "cd wasm && ./build.sh",
+    "build": "npm install && npx vite build",
+    "build:wasm": "cd wasm && ./build.sh"
     "server": "cd server && cargo run",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "lint": "eslint .",
