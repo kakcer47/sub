@@ -8,7 +8,7 @@ name = "p2p-server"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["full", "fs"] }
 warp = "0.3"
 futures = "0.3"
 dashmap = "5.0"

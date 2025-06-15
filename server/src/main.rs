@@ -111,6 +111,27 @@ async fn main() {
     info!("🚀 P2P Signaling server running at {}", addr);
     info!("📊 Max clients: {}, Max message size: {}KB", MAX_CLIENTS, MAX_MESSAGE_SIZE / 1024);
 
+    // Раздача статических файлов (фронтенд)
+    let static_files = warp::path("static")
+        .and(warp::fs::dir("../dist"));
+
+    // Главная страница
+    let index = warp::path::end()
+        .and(warp::fs::file("../dist/index.html"));
+
+    // Все остальные пути -> index.html (SPA)
+    let spa = warp::any()
+        .and(warp::fs::file("../dist/index.html"));
+
+    let routes = ws_route
+        .or(health)
+        .or(stats)
+        .or(static_files)
+        .or(index)
+        .or(spa)
+        .with(cors)
+        .recover(handle_rejection);
+
     warp::serve(routes).run(addr).await;
 }
 
