@@ -106,11 +106,6 @@ async fn main() {
         .with(cors)
         .recover(handle_rejection);
 
-    // Запуск сервера
-    let addr: SocketAddr = ([0, 0, 0, 0], 8080).into();
-    info!("🚀 P2P Signaling server running at {}", addr);
-    info!("📊 Max clients: {}, Max message size: {}KB", MAX_CLIENTS, MAX_MESSAGE_SIZE / 1024);
-
     // Раздача статических файлов (фронтенд)
     let static_files = warp::path("static")
         .and(warp::fs::dir("../dist"));
@@ -123,6 +118,7 @@ async fn main() {
     let spa = warp::any()
         .and(warp::fs::file("../dist/index.html"));
 
+    // Объединяем ВСЕ маршруты в один
     let routes = ws_route
         .or(health)
         .or(stats)
@@ -131,6 +127,11 @@ async fn main() {
         .or(spa)
         .with(cors)
         .recover(handle_rejection);
+
+    // Запуск сервера
+    let addr: SocketAddr = ([0, 0, 0, 0], 8080).into();
+    info!("🚀 P2P Signaling server running at {}", addr);
+    info!("📊 Max clients: {}, Max message size: {}KB", MAX_CLIENTS, MAX_MESSAGE_SIZE / 1024);
 
     warp::serve(routes).run(addr).await;
 }
