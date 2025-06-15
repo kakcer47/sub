@@ -1,0 +1,15 @@
+import { DataItem } from '../types'
+
+export const types: DataItem[] = [
+  { id: 'all', name: 'All Types' },
+  { id: 'event', name: 'Event' },
+  { id: 'sale', name: 'Sale' },
+  { id: 'news', name: 'News' },
+  { id: 'work', name: 'Work' },
+  { id: 'housing', name: 'Housing' },
+  { id: 'transport', name: 'Transport' },
+  { id: 'services', name: 'Services' },
+  { id: 'education', name: 'Education' },
+  { id: 'entertainment', name: 'Entertainment' },
+  { id: 'other', name: 'Other' }
+]

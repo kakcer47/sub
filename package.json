@@ -1,0 +1,46 @@
+{
+  "name": "p2p-telegram-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:wasm && vite",
+    "build": "npm run build:wasm && tsc -b && vite build",
+    "build:wasm": "cd wasm && ./build.sh",
+    "build:wasm-safe": "cd wasm && if [ -f build.sh ]; then ./build.sh; else echo 'WASM build skipped - build.sh not found'; fi",
+    "server": "cd server && cargo run",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "clean": "rm -rf dist node_modules/.vite src/lib/wasm-engine && cd wasm && cargo clean",
+    "test:build": "npm run build:wasm-safe && npm run build",
+    "check": "npm run build:wasm-safe && tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.80.6",
+    "i18next": "^25.2.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-i18next": "^15.5.2",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.6",
+    "@typescript-eslint/eslint-plugin": "^8.33.1",
+    "@typescript-eslint/parser": "^8.33.1",
+    "@vitejs/plugin-react": "^4.5.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "eslint": "^9.28.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.0.0",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.30.1",
+    "vite": "^6.3.5"
+  }
+}

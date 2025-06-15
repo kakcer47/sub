@@ -1,0 +1,15 @@
+import { DataItem } from '../types'
+
+export const cities: DataItem[] = [
+  { id: 'all', name: 'Все города' },
+  { id: 'moscow', name: 'Москва' },
+  { id: 'spb', name: 'Санкт-Петербург' },
+  { id: 'novosibirsk', name: 'Новосибирск' },
+  { id: 'ekaterinburg', name: 'Екатеринбург' },
+  { id: 'kazan', name: 'Казань' },
+  { id: 'nizhniy', name: 'Нижний Новгород' },
+  { id: 'chelyabinsk', name: 'Челябинск' },
+  { id: 'samara', name: 'Самара' },
+  { id: 'omsk', name: 'Омск' },
+  { id: 'rostov', name: 'Ростов-на-Дону' }
+]
