@@ -40,34 +40,6 @@ export interface CreateEntryData {
   creator_id: number
 }
 
-// Загружаем WASM модуль
-let wasmEngine: any = null
-
-async function initWasm() {
-  if (wasmEngine) return wasmEngine
-
-  try {
-    console.log('🦀 Loading WASM module...')
-    
-    // Динамический импорт WASM модуля
-    const wasmModule = await import('./wasm-engine/wasm_engine.js')
-    await wasmModule.default() // Инициализация WASM
-    
-    const { WasmEngine } = wasmModule
-    wasmEngine = new WasmEngine()
-    
-    console.log('✅ WASM Engine loaded successfully')
-    return wasmEngine
-    
-  } catch (error) {
-    console.error('❌ Failed to load WASM:', error)
-    console.warn('📋 Using fallback memory storage instead of WASM')
-    
-    // Fallback на память если WASM не загружается
-    return createFallbackEngine()
-  }
-}
-
 // Fallback движок для случаев когда WASM не работает
 function createFallbackEngine() {
   console.warn('⚠️ Using fallback engine - data will not be compressed')
