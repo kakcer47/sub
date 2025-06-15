@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm install && npx vite build",
-    "build:wasm": "cd wasm && ./build.sh",
+    "build": "npm run install-rust && npm run build:wasm && npx vite build",
+    "install-rust": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source ~/.cargo/env && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh",
+    "build:wasm": "cd wasm && ~/.cargo/bin/wasm-pack build --target web --out-dir ../src/lib/wasm-engine --no-typescript",
     "server": "cd server && cargo run",
     "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "lint": "eslint .",
