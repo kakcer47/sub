@@ -18,14 +18,14 @@ class SimpleStorage {
     this.eventsByKind = new Map(); // kind -> Set(eventIds)
     this.eventsByAuthor = new Map(); // pubkey -> Set(eventIds)
     this.eventsByTag = new Map(); // tag -> Set(eventIds)
-    
+
     // Load existing data
     this.loadData();
-    
+
     // Auto-save every 30 seconds
     setInterval(() => this.saveData(), 30000);
   }
-  
+
   saveData() {
     try {
       const data = {
@@ -34,47 +34,47 @@ class SimpleStorage {
         eventsByAuthor: Array.from(this.eventsByAuthor.entries()).map(([k, v]) => [k, Array.from(v)]),
         eventsByTag: Array.from(this.eventsByTag.entries()).map(([k, v]) => [k, Array.from(v)])
       };
-      
+
       fs.writeFileSync('nostr-data.json', JSON.stringify(data, null, 2));
       console.log('💾 Data saved to disk');
     } catch (error) {
       console.error('❌ Failed to save data:', error);
     }
   }
-  
+
   loadData() {
     try {
       if (fs.existsSync('nostr-data.json')) {
         const data = JSON.parse(fs.readFileSync('nostr-data.json', 'utf8'));
-        
+
         this.events = new Map(data.events || []);
         this.eventsByKind = new Map((data.eventsByKind || []).map(([k, v]) => [k, new Set(v)]));
         this.eventsByAuthor = new Map((data.eventsByAuthor || []).map(([k, v]) => [k, new Set(v)]));
         this.eventsByTag = new Map((data.eventsByTag || []).map(([k, v]) => [k, new Set(v)]));
-        
+
         console.log(`📚 Loaded ${this.events.size} events from disk`);
       }
     } catch (error) {
       console.error('❌ Failed to load data:', error);
     }
   }
-  
+
   addEvent(event) {
     // Store event
     this.events.set(event.id, event);
-    
+
     // Index by kind
     if (!this.eventsByKind.has(event.kind)) {
       this.eventsByKind.set(event.kind, new Set());
     }
     this.eventsByKind.get(event.kind).add(event.id);
-    
+
     // Index by author
     if (!this.eventsByAuthor.has(event.pubkey)) {
       this.eventsByAuthor.set(event.pubkey, new Set());
     }
     this.eventsByAuthor.get(event.pubkey).add(event.id);
-    
+
     // Index by tags
     event.tags.forEach(tag => {
       const tagKey = `${tag[0]}:${tag[1] || ''}`;
@@ -83,14 +83,39 @@ class SimpleStorage {
       }
       this.eventsByTag.get(tagKey).add(event.id);
     });
-    
+
     console.log(`📨 Stored event ${event.id.slice(0, 8)}... (kind: ${event.kind})`);
   }
-  
+
+  deleteEvent(eventId) {
+    const event = this.events.get(eventId);
+    if (!event) return false;
+
+    // Удаляем из основного хранилища
+    this.events.delete(eventId);
+
+    // Удаляем из индексов
+    const kindSet = this.eventsByKind.get(event.kind);
+    if (kindSet) kindSet.delete(eventId);
+
+    const authorSet = this.eventsByAuthor.get(event.pubkey);
+    if (authorSet) authorSet.delete(eventId);
+
+    // Удаляем из тегов
+    event.tags.forEach(tag => {
+      const tagKey = `${tag[0]}:${tag[1] || ''}`;
+      const tagSet = this.eventsByTag.get(tagKey);
+      if (tagSet) tagSet.delete(eventId);
+    });
+
+    console.log(`🗑️ Deleted event ${eventId.slice(0, 8)}...`);
+    return true;
+  }
+
   queryEvents(filter) {
     let results = new Set();
     let isFirstFilter = true;
-    
+
     // Filter by kinds
     if (filter.kinds) {
       const kindResults = new Set();
@@ -98,7 +123,7 @@ class SimpleStorage {
         const events = this.eventsByKind.get(kind) || new Set();
         events.forEach(id => kindResults.add(id));
       });
-      
+
       if (isFirstFilter) {
         results = kindResults;
         isFirstFilter = false;
@@ -106,7 +131,7 @@ class SimpleStorage {
         results = new Set([...results].filter(id => kindResults.has(id)));
       }
     }
-    
+
     // Filter by authors
     if (filter.authors) {
       const authorResults = new Set();
@@ -114,7 +139,7 @@ class SimpleStorage {
         const events = this.eventsByAuthor.get(pubkey) || new Set();
         events.forEach(id => authorResults.add(id));
       });
-      
+
       if (isFirstFilter) {
         results = authorResults;
         isFirstFilter = false;
@@ -122,20 +147,20 @@ class SimpleStorage {
         results = new Set([...results].filter(id => authorResults.has(id)));
       }
     }
-    
+
     // Filter by tags
     Object.keys(filter).forEach(key => {
       if (key.startsWith('#')) {
         const tagName = key.slice(1);
         const tagValues = filter[key];
         const tagResults = new Set();
-        
+
         tagValues.forEach(value => {
           const tagKey = `${tagName}:${value}`;
           const events = this.eventsByTag.get(tagKey) || new Set();
           events.forEach(id => tagResults.add(id));
         });
-        
+
         if (isFirstFilter) {
           results = tagResults;
           isFirstFilter = false;
@@ -144,17 +169,17 @@ class SimpleStorage {
         }
       }
     });
-    
+
     // If no specific filters, get all events
     if (isFirstFilter) {
       results = new Set(this.events.keys());
     }
-    
+
     // Convert to events and apply additional filters
     let events = Array.from(results)
       .map(id => this.events.get(id))
       .filter(event => event);
-    
+
     // Filter by time
     if (filter.since) {
       events = events.filter(event => event.created_at >= filter.since);
@@ -162,15 +187,15 @@ class SimpleStorage {
     if (filter.until) {
       events = events.filter(event => event.created_at <= filter.until);
     }
-    
+
     // Sort by created_at (newest first)
     events.sort((a, b) => b.created_at - a.created_at);
-    
+
     // Apply limit
     if (filter.limit) {
       events = events.slice(0, filter.limit);
     }
-    
+
     return events;
   }
 }
@@ -184,7 +209,7 @@ function verifyEvent(event) {
   if (!event.id || !event.pubkey || !event.created_at || !event.kind || !event.sig) {
     return false;
   }
-  
+
   // Verify event ID matches content hash
   const eventData = JSON.stringify([
     0,
@@ -194,7 +219,7 @@ function verifyEvent(event) {
     event.tags || [],
     event.content || ''
   ]);
-  
+
   const hash = crypto.createHash('sha256').update(eventData).digest('hex');
   return hash === event.id;
 }
@@ -203,20 +228,20 @@ function handleMessage(ws, message) {
   try {
     const data = JSON.parse(message);
     const [type, ...args] = data;
-    
+
     switch (type) {
       case 'EVENT':
         handleEvent(ws, args[0]);
         break;
-        
+
       case 'REQ':
         handleRequest(ws, args[0], ...args.slice(1));
         break;
-        
+
       case 'CLOSE':
         handleClose(ws, args[0]);
         break;
-        
+
       default:
         console.log('Unknown message type:', type);
     }
@@ -233,59 +258,78 @@ function handleEvent(ws, event) {
     return;
   }
   
+  // ✅ ДОБАВЬ ЭТУ ПРОВЕРКУ:
+  if (event.kind === 5) {
+    // Обработка delete event
+    const deletedIds = event.tags
+      .filter(tag => tag[0] === 'e')
+      .map(tag => tag[1]);
+    
+    deletedIds.forEach(postId => {
+      if (storage.deleteEvent(postId)) {
+        console.log(`🗑️ Processed delete for: ${postId.slice(0, 8)}...`);
+      }
+    });
+    
+    // Сохраняем delete event тоже
+    storage.addEvent(event);
+    ws.send(JSON.stringify(['OK', event.id, true, 'delete processed']));
+    return;
+  }
+  
   // Check if event already exists
   if (storage.events.has(event.id)) {
     ws.send(JSON.stringify(['OK', event.id, true, 'duplicate event']));
     return;
   }
   
-  // Store event
+  // Store regular event
   storage.addEvent(event);
   
   // Send OK response
   ws.send(JSON.stringify(['OK', event.id, true, '']));
-  
+
   // Broadcast to all connected clients
   wss.clients.forEach(client => {
-  if (client.readyState === client.OPEN && client.subscriptions) {
-    client.subscriptions.forEach((filters, subId) => {
-      filters.forEach(filter => {
-        if (matchesFilter(event, filter)) {
-          client.send(JSON.stringify(['EVENT', subId, event]));
-        }
+    if (client.readyState === client.OPEN && client.subscriptions) {
+      client.subscriptions.forEach((filters, subId) => {
+        filters.forEach(filter => {
+          if (matchesFilter(event, filter)) {
+            client.send(JSON.stringify(['EVENT', subId, event]));
+          }
+        });
       });
-    });
-  }
-});
-  
+    }
+  });
+
   console.log(`✅ Accepted event ${event.id.slice(0, 8)}... from ${event.pubkey.slice(0, 8)}...`);
 }
 
 function handleRequest(ws, subscriptionId, ...filters) {
   console.log(`🔍 REQ ${subscriptionId} with ${filters.length} filters`);
-  
+
   // Store subscription for this client
   if (!ws.subscriptions) {
     ws.subscriptions = new Map();
   }
   ws.subscriptions.set(subscriptionId, filters);
-  
+
   // Query and send matching events
   const allEvents = new Set();
-  
+
   filters.forEach(filter => {
     const events = storage.queryEvents(filter);
     events.forEach(event => allEvents.add(event));
   });
-  
+
   // Send events
   Array.from(allEvents).forEach(event => {
     ws.send(JSON.stringify(['EVENT', subscriptionId, event]));
   });
-  
+
   // Send EOSE (End of Stored Events)
   ws.send(JSON.stringify(['EOSE', subscriptionId]));
-  
+
   console.log(`📤 Sent ${allEvents.size} events for subscription ${subscriptionId}`);
 }
 
@@ -388,21 +432,21 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
   console.log(`🤝 New client connected from ${req.socket.remoteAddress}`);
-  
+
   ws.subscriptions = new Map();
-  
+
   ws.on('message', (data) => {
     handleMessage(ws, data.toString());
   });
-  
+
   ws.on('close', () => {
     console.log('👋 Client disconnected');
   });
-  
+
   ws.on('error', (error) => {
     console.error('❌ WebSocket error:', error);
   });
-  
+
   // Send welcome message
   ws.send(JSON.stringify(['NOTICE', 'Connected to Personal Nostr Relay']));
 });
