@@ -246,7 +246,17 @@ function handleEvent(ws, event) {
   ws.send(JSON.stringify(['OK', event.id, true, '']));
   
   // Broadcast to all connected clients
-  broadcast(JSON.stringify(['EVENT', event.id, event]));
+  wss.clients.forEach(client => {
+  if (client.readyState === client.OPEN && client.subscriptions) {
+    client.subscriptions.forEach((filters, subId) => {
+      filters.forEach(filter => {
+        if (matchesFilter(event, filter)) {
+          client.send(JSON.stringify(['EVENT', subId, event]));
+        }
+      });
+    });
+  }
+});
   
   console.log(`✅ Accepted event ${event.id.slice(0, 8)}... from ${event.pubkey.slice(0, 8)}...`);
 }
@@ -284,6 +294,26 @@ function handleClose(ws, subscriptionId) {
     ws.subscriptions.delete(subscriptionId);
   }
   console.log(`❌ Closed subscription ${subscriptionId}`);
+}
+
+function matchesFilter(event, filter) {
+  if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+  if (filter.authors && !filter.authors.includes(event.pubkey)) return false;
+
+  // Проверка тегов
+  for (const key in filter) {
+    if (key.startsWith('#')) {
+      const tagName = key.slice(1);
+      const values = filter[key];
+      const matches = event.tags.some(tag => tag[0] === tagName && values.includes(tag[1]));
+      if (!matches) return false;
+    }
+  }
+
+  if (filter.since && event.created_at < filter.since) return false;
+  if (filter.until && event.created_at > filter.until) return false;
+
+  return true;
 }
 
 function broadcast(message) {
