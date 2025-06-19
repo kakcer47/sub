@@ -257,35 +257,49 @@ function handleEvent(ws, event) {
     ws.send(JSON.stringify(['OK', event.id, false, 'invalid event']));
     return;
   }
-  
+
   // ✅ ДОБАВЬ ЭТУ ПРОВЕРКУ:
   if (event.kind === 5) {
     // Обработка delete event
     const deletedIds = event.tags
       .filter(tag => tag[0] === 'e')
       .map(tag => tag[1]);
-    
+
     deletedIds.forEach(postId => {
       if (storage.deleteEvent(postId)) {
         console.log(`🗑️ Processed delete for: ${postId.slice(0, 8)}...`);
       }
     });
-    
-    // Сохраняем delete event тоже
+
+    // Сохраняем delete event
     storage.addEvent(event);
     ws.send(JSON.stringify(['OK', event.id, true, 'delete processed']));
+
+    // ✅ ДОБАВЬ ЭТО - broadcast delete event:
+    wss.clients.forEach(client => {
+      if (client.readyState === client.OPEN && client.subscriptions) {
+        client.subscriptions.forEach((filters, subId) => {
+          filters.forEach(filter => {
+            if (matchesFilter(event, filter)) {
+              client.send(JSON.stringify(['EVENT', subId, event]));
+            }
+          });
+        });
+      }
+    });
+
     return;
   }
-  
+
   // Check if event already exists
   if (storage.events.has(event.id)) {
     ws.send(JSON.stringify(['OK', event.id, true, 'duplicate event']));
     return;
   }
-  
+
   // Store regular event
   storage.addEvent(event);
-  
+
   // Send OK response
   ws.send(JSON.stringify(['OK', event.id, true, '']));
 
