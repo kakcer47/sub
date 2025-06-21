@@ -278,3 +278,201 @@ relay с поддержкой поиска.
 
 С таким подходом вы обеспечите системe лёгкую поддержку сотен тысяч событий и тысяч активных сокетов при скромном железе.
 ------------------
+
+Ниже — пошаговый план «пересборки» вашего Node.js‑сервера, в ходе которого мы:
+
+1. Выделим и расширим модуль хранения (SimpleStorage → Storage Engine)
+2. Добавим LRU‑кеш и ротацию TTL-логов
+3. Подключим лёгкую full‑text‑индексацию для поиска
+4. Реализуем REST‑API для поиска/сортировки/пагинации
+5. Переведём broadcast на Redis Pub/Sub для масштабируемости
+6. Оптимизируем WebSocket‑слой (батчи, сжатие, дебаунс)
+7. Внедрим мониторинг и конфигурируем CI/CD
+
+---
+
+## 1. Рефакторинг структуры проекта
+
+```
+/src
+  /config
+    index.js
+  /storage
+    IStorage.js          ← интерфейс хранилища
+    InMemoryStorage.js   ← реализация с LRU‑кешем и TTL
+    DiskStorage.js       ← бекэнд для persist (LevelDB/SQLite)
+  /search
+    SearchIndex.js       ← full‑text‑поиск (lunr.js или sqlite FTS)
+  /api
+    search.js            ← express‑роут /search
+    health.js            ← /health, /info
+  /ws
+    relay.js             ← WebSocket + pubsub
+  app.js                 ← инициализация HTTP + WS + graceful shutdown
+/package.json
+```
+
+1. **config/index.js**
+   Хранит все параметры (LRU‑size, TTL-логов, Redis URL, порты, batch‑интервалы и т.д.).
+
+2. **IStorage.js**
+
+   ```js
+   class IStorage {
+     async addEvent(event) {}
+     async deleteEvent(eventId) {}
+     async queryEvents(filter, { sort, limit, offset }) {}
+     async getSnapshot({ limit, offset }) {}
+     async pruneExpired() {}
+   }
+   module.exports = IStorage;
+   ```
+
+---
+
+## 2. Хранилище с LRU‑кешем и TTL‑ротацией
+
+### 2.1 InMemoryStorage (горячий уровень)
+
+* **LRU‑кеш**:
+  Используем [lru-cache](https://www.npmjs.com/package/lru-cache).
+
+  ```js
+  const LRU = require('lru-cache');
+  this.cache = new LRU({ max: config.cacheMaxItems });
+  ```
+
+  — при `addEvent` и `deleteEvent` обновляем кеш, при переполнении LRU сам сбросит «самые старые» события.
+
+* **TTL‑ротация**:
+  Сохраняем в кэше с меткой `created_at`. По cron (каждые X минут) вызываем `cache.forEach` и `cache.del(id)`, если `now – created_at > config.eventTTL`.
+
+### 2.2 DiskStorage (холодный уровень)
+
+* **LevelDB** или **SQLite**:
+  — LevelDB через [level](https://www.npmjs.com/package/level) для ключ‑значение:
+
+  ```js
+  const level = require('level');
+  this.db = level(path.join(__dirname, '../../data/db'));
+  ```
+
+  — Каждое событие записываем в DB (при LRU‑выпадении).
+  — При запросе не в кэше — читаем из DB.
+
+* **Batch‑запись**:
+  Собираем операции `put`/`del` в массив, раз в 200 ms делаем `db.batch(ops)`.
+
+---
+
+## 3. Full‑text‑поиск
+
+### Вариант A: lunr.js
+
+* При `addEvent` обновляем индекс:
+
+  ```js
+  this.index.add({ id: event.id, content: event.content });
+  ```
+* В `/search` делаем `index.search(query)` → получаем массив `id` → подгружаем события из кэша или DB.
+
+### Вариант B: SQLite FTS5
+
+* Таблица `events_fts(content)` с FTS5.
+* Запрос `SELECT id FROM events_fts WHERE content MATCH ?`.
+
+---
+
+## 4. REST‑API (/src/api/search.js)
+
+```js
+const express = require('express');
+const router = express.Router();
+const storage = require('../storage');        // ваш Storage Engine
+const searchIndex = require('../search/Index');
+
+router.get('/search', async (req, res) => {
+  const { q, sort='time_desc', limit=50, offset=0 } = req.query;
+
+  // 1) Поиск ID через текстовый индекс
+  let ids = q
+    ? await searchIndex.search(q, { limit: 1000 })
+    : null;
+
+  // 2) Запрос из хранилища
+  const events = await storage.queryEvents(
+    { ids, since: req.query.since, kinds: req.query.kinds },
+    { sort, limit: parseInt(limit), offset: parseInt(offset) }
+  );
+
+  res.json({ total: events.totalCount, items: events.items });
+});
+
+module.exports = router;
+```
+
+* **Сортировка**: по `time_desc`, `likes_desc` — `queryEvents` учитывает параметр `sort`.
+
+---
+
+## 5. Масштабируемый broadcast через Redis Pub/Sub
+
+1. **Подключение**
+
+   ```js
+   const Redis = require('ioredis');
+   const pub = new Redis(config.redisUrl);
+   const sub = new Redis(config.redisUrl);
+   ```
+2. **Публикация**
+   — При `addEvent` делаем `pub.publish('events', JSON.stringify(eventPatch))`.
+3. **Подписка**
+   — В WebSocket‑модуле `sub.subscribe('events')`, на событие `message` — рассылаем по нужным WS‑клиентам.
+4. **Балансировка**
+   — Можете запустить несколько нод на разных портах, они все получат и разошлют события.
+
+---
+
+## 6. Оптимизация WebSocket‑слоя
+
+* **Сжатие**: включить `permessage-deflate` в `ws`:
+
+  ```js
+  const wss = new WebSocketServer({ server, perMessageDeflate: true });
+  ```
+* **Батчинг уведомлений**:
+  — Собираем патчи в массив; каждую 50 ms склеиваем в один мультимесседж и рассылаем.
+* **Debounce лайков**:
+  — Кэшируем лайки в памяти, раз в 100 ms шлём батч на запись в DB и на Pub/Sub.
+
+---
+
+## 7. Мониторинг, логирование, CI/CD
+
+1. **Metrics (Prometheus + Grafana)**
+   — Собираем: количество WS‑клиентов, длина LRU‑кеша, QPS на `/search`, latency broadcast’а.
+2. **Structured Logging**
+   — [pino](https://github.com/pinojs/pino) с красной трассировкой ошибок.
+3. **CI/CD**
+   — GitHub Actions:
+
+   ```yaml
+   - test: npm test
+   - lint: npm run lint
+   - build: npm run build
+   - deploy: ssh your‑server 'pm2 reload all'
+   ```
+4. **Healthchecks & Readiness**
+   — Endpoint `/health` проверяет DB‑соединение, Redis‑Pub/Sub, размер кеша.
+
+---
+
+### Итоговая картина
+
+* **Storage Engine** построен по принципу «горячее → холодное» с LRU и TTL, full‑text‑индексом.
+* **REST API** даёт гибкий поиск/сортировку/пагинацию.
+* **WebSocket** оптимизирован batched/deflate, а рассылка делегирована Redis Pub/Sub.
+* **Мониторинг** и **CI/CD** закрывают вопросы надёжности и быстрой доставки изменений в продакшен.
+
+Такой поэтапный рефакторинг даёт вам мощный, легко масштабируемый и высокопроизводительный «relay‑хаб» без полного переписывания «с ноля».
+-------------
